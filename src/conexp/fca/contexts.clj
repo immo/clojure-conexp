@@ -7,8 +7,7 @@
 ;; You must not remove this notice, or any other, from this software.
 
 (ns conexp.fca.contexts
-  (:use conexp.base)
-  (:require [clojure.contrib.graph :as graph]))
+  (:use conexp.base))
 
 (ns-doc
  "Provides the implementation of formal contexts and functions on
@@ -22,6 +21,11 @@
     (generic-equals [this other] Context [objects attributes incidence]))
   (hashCode [this]
     (hash-combine-hash Context objects attributes incidence)))
+
+(defn context?
+  "Returns true iff thing is a context."
+  [thing]
+  (instance? Context thing))
 
 (defmulti objects
   "Returns the objects of a formal context.."
@@ -195,24 +199,24 @@
         m (count G),
         n (count M)]
     (assert (= (* m n) (count bits)))
-    (make-context G M
-                  (set-of [a b] [i (range (count G)),
-                                 j (range (count M)),
-                                 :when (= 1 (nth bits (+ (* n i) j)))
-                                 :let [a (nth G i),
-                                       b (nth M j)]]))))
+    (make-context-nc G M
+                     (set-of [a b] [i (range (count G)),
+                                    j (range (count M)),
+                                    :when (= 1 (nth bits (+ (* n i) j)))
+                                    :let [a (nth G i),
+                                          b (nth M j)]]))))
 
 (defn object-derivation
   "Computes set of attributes common to all objects in context."
   [ctx objects]
-  (let [inz (incidence ctx)
+  (let [inz  (incidence ctx),
 	atts (attributes ctx)]
     (set-of m [m atts :when (forall [g objects] (inz [g m]))])))
 
 (defn attribute-derivation
   "Computes set of objects common to all attributes in context."
   [ctx attributes]
-  (let [inz (incidence ctx)
+  (let [inz  (incidence ctx),
         objs (objects ctx)]
     (set-of g [g objs :when (forall [m attributes] (inz [g m]))])))
 
@@ -221,8 +225,8 @@
   [ctx [set-of-obj set-of-att]]
   (and (subset? set-of-obj (objects ctx))
        (subset? set-of-att (attributes ctx))
-       (= set-of-obj (object-derivation ctx set-of-att))
-       (= set-of-att (attribute-derivation ctx set-of-obj))))
+       (= set-of-obj (attribute-derivation ctx set-of-att))
+       (= set-of-att (object-derivation ctx set-of-obj))))
 
 (defn clarify-objects
   "Clarifies objects in context ctx."
@@ -289,7 +293,7 @@
 	inz (incidence ctx)
 	prime (memoize (partial attribute-derivation ctx))]
     (set-of [g m]
-	    [g obj
+	    [g obj,
 	     m att
 	     :when (and (not (inz [g m]))
 			(forall [n att]
@@ -339,10 +343,10 @@
 	     att (attributes ctx)
 	     uda (up-down-arrows ctx)]
 	 (and (forall [g obj]
-		(exists [ [h _] uda ]
+		(exists [[h _] uda]
 		  (= g h)))
 	      (forall [m att]
-		(exists [ [_ n] uda ]
+		(exists [[_ n] uda]
 		  (= m n)))))))
 
 (defn context-object-closure
@@ -376,7 +380,7 @@
   (for [objs (context-extents ctx)]
     [objs, (object-derivation ctx objs)]))
 
-;; Common Operations with Contexts
+;;; Common Operations with Contexts
 
 (defn dual-context
   "Dualizes context ctx, that is $(G,M,I)$ gets $(M,G,I^{-1})$."
@@ -510,7 +514,7 @@
 			(set-of [[g_2 2] [m_1 1]]
 				[g_2 (objects ctx-2)
 				 m_1 (attributes ctx-1)]))]
-    (make-context new-objs new-atts new-inz)))
+    (make-context-nc new-objs new-atts new-inz)))
 
 (defn context-product
   "Computes the context product of ctx-1 and ctx-2, that is
@@ -581,67 +585,6 @@
 			  :when (<=> (I_1 [g_1,m_1])
 				     (I_2 [g_2,m_2]))])]
     (make-context-nc new-objs new-atts new-inz)))
-
-;;;
-
-(defn subcontext?
-  "Tests whether ctx-1 is a subcontext ctx-2 or not."
-  [ctx-1 ctx-2]
-  (let [objs-1 (objects ctx-1)
-	objs-2 (objects ctx-2)
-	atts-1 (attributes ctx-1)
-	atts-2 (attributes ctx-2)]
-    (and (subset? objs-1 objs-2)
-	 (subset? atts-1 atts-2)
-	 (forall [[g m] (incidence ctx-1)]
-	   (=> (and (contains? objs-1 g)
-		    (contains? atts-1 m))
-	       (contains? (incidence ctx-2) [g m]))))))
-
-(defn compatible-subcontext?
-  "Tests whether ctx-1 is a compatible subcontext of ctx-2."
-  [ctx-1 ctx-2]
-  (and (subcontext? ctx-1 ctx-2)
-       (forall [[h m] (up-arrows ctx-2)]
-	 (=> (contains? (objects ctx-1) h)
-	     (contains? (attributes ctx-1) m)))
-       (forall [[g n] (down-arrows ctx-2)]
-         (=> (contains? (attributes ctx-1) n)
-	     (contains? (objects ctx-1) g)))))
-
-(defn compatible-subcontexts
-  "Returns all compatible subcontexts of ctx. ctx has to be reduced."
-  [ctx]
-  (if (not (reduced? ctx))
-    (illegal-argument "Context given to compatible-subcontexts has to be reduced."))
-  (let [up-arrows        (up-arrows ctx)
-	down-arrows      (down-arrows ctx)
-	subcontext-graph (graph/transitive-closure
-			  (struct graph/directed-graph
-				  (disjoint-union (objects ctx) (attributes ctx))
-				  (fn [[x idx]]
-				    (condp = idx
-				      0 (for [[g m] up-arrows
-					      :when (= g x)]
-					  [m 1])
-				      1 (for [[g m] down-arrows
-					      :when (= m x)]
-					  [g 0])))))
-	down-down        (set-of [g m] [m (attributes ctx)
-					[g idx] (graph/get-neighbors subcontext-graph [m 1])
-					:when (= idx 0)])
-	compatible-ctx   (make-context (objects ctx)
-				       (attributes ctx)
-				       (fn [g m]
-					 (not (contains? down-down [g m]))))]
-    (for [[G-H N] (concepts compatible-ctx)]
-      (make-context (difference (objects ctx) G-H) N (incidence ctx)))))
-
-(defn restrict-concept
-  "Restricts the given concept to the given subcontext."
-  [concept subcontext]
-  [(intersection (first concept) (objects subcontext)),
-   (intersection (second concept) (attributes subcontext))])
 
 ;;;
 
