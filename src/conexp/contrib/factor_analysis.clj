@@ -7,15 +7,18 @@
 ;; You must not remove this notice, or any other, from this software.
 
 (ns conexp.contrib.factor-analysis
-  (:use conexp.main)
+  (:use conexp.main
+        [conexp.contrib.fuzzy sets logics fca])
   (:import [java.util HashMap]))
 
 (ns-doc "Implements factorization algorithms for contexts.")
 
-;;;
+;;; Interface
 
 (defmulti factorize-context
-  "Factorize context by given method."
+  "Factorize context by given method. Note that the method determines
+  whether the context is a formal context (as in the boolean case) or
+  a many-valued one (as in the fuzzy case)."
   {:arglists '([method context & args])}
   (fn [method context & _] method))
 
@@ -107,7 +110,54 @@
                  (conj F [C D])))
         (clear-factors F)))))
 
-;;; Many Valued (with t-norms, TODO)
+;;; Many Valued (with t-norms)
+
+(defn- fuzzy-oplus-a
+  "Helper function to compute D\\oplus_a j."
+  [context U D a j]
+  (let [D+        (assoc D j a),
+        D+down    (fuzzy-attribute-derivation context D+),
+        D+down-up (fuzzy-object-derivation context D+down)]
+    (set-of [k l] [[k l] U,
+                   :when (>= (f-star (D+down k) (D+down-up l))
+                             ((incidence context) [k l]))])))
+
+(defn- find-maximal
+  "Find the maximal [m v], where m is an attribute and v in (0,1],
+  such that the cardinality of the set returned by fuzzy-oplus-a is
+  maximal. Returns the pair [[m v], count], where count is the
+  aforementioned cardinality."
+  [context U D]
+  (apply max-key second
+         (map (fn [[[g m] v]]
+                [[m v], (count (fuzzy-oplus-a context U D v m))])
+              (select-keys (incidence context) U))))
+
+(defmethod factorize-context :fuzzy
+  [_ context]
+  (let [inz          (incidence context),
+        find-maximal (partial find-maximal context)]
+    (loop [U (set-of [g m] [g (objects context),
+                            m (attributes context),
+                            :when (not (zero? (inz [g m])))]),
+           F #{}]
+      (if (empty? U)
+        F
+        (let [D (loop [D (make-fuzzy-set {}),
+                       V 0,
+                       [[j a] value] (find-maximal U D)]
+                  (if (> value V)
+                    (recur (fuzzy-object-derivation context
+                                                    (fuzzy-attribute-derivation context (assoc D j a)))
+                           value
+                           (find-maximal U D))
+                    D)),
+              C (fuzzy-attribute-derivation context D),
+              F (conj F [C,D]),
+              U (set-of [i j] [[i j] U,
+                               :when (not (<= (inz [i j])
+                                              (f-star (C i) (D j))))])]
+          (recur U F))))))
 
 ;;;
 

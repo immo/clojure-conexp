@@ -8,7 +8,6 @@
 
 (ns conexp.contrib.draw.nodes-and-connections
   (:use [conexp.base :only (ns-doc,defvar-, defvar, round, union, difference)]
-	conexp.contrib.draw.util
 	conexp.contrib.draw.scenes)
   (:use	[clojure.contrib.core :only (-?>)])
   (:import [java.awt Color]
@@ -26,53 +25,53 @@
   "Tests whether thing is a node of a lattice diagram or not."
   [thing]
   (and (instance? GObject thing)
-       (= (:type @(.getUserData #^GObject thing)) :node)))
+       (= (:type @(.getUserData ^GObject thing)) :node)))
 
 (defn connection?
   "Tests whether thing is a connection of a lattice diagram or not."
   [thing]
   (and (instance? GObject thing)
-       (= (:type @(.getUserData #^GObject thing)) :connection)))
+       (= (:type @(.getUserData ^GObject thing)) :connection)))
 
 (defn position
   "Returns the position of a node in a lattice diagram."
-  [#^GObject node]
+  [^GObject node]
   (:position @(.getUserData node)))
 
 (defn radius
   "Returns the radius of a node in a lattice diagram."
-  [#^GObject node]
+  [^GObject node]
   (:radius @(.getUserData node)))
 
 (defn set-node-radius!
   "Sets radius of node."
-  [#^GObject node, radius]
+  [^GObject node, radius]
   (dosync
    (alter (.getUserData node) assoc :radius radius)))
 
 (defn get-name
   "Returns name of thing."
-  [#^GObject thing]
+  [^GObject thing]
   (:name @(.getUserData thing)))
 
 (defn lower-node
   "Returns for a connection conn the lower node in a lattice diagram."
-  [#^GObject conn]
+  [^GObject conn]
   (:lower @(.getUserData conn)))
 
 (defn upper-node
   "Returns for a connection conn the upper node in a lattice diagram."
-  [#^GObject conn]
+  [^GObject conn]
   (:upper @(.getUserData conn)))
 
 (defn upper-connections
   "Returns all upper connections for node in a lattice diagram."
-  [#^GObject node]
+  [^GObject node]
   (:upper @(.getUserData node)))
 
 (defn lower-connections
   "Returns all lower connections of node in a lattice diagram."
-  [#^GObject node]
+  [^GObject node]
   (:lower @(.getUserData node)))
 
 (defn upper-neighbors
@@ -133,9 +132,9 @@
 
 (defn- add-node
   "Adds a node to scn at position [x y]."
-  [#^GScene scn, x, y, name, [upper-label lower-label]]
-  (let [#^GSegment upper-segment (GSegment.),
-	#^GSegment lower-segment (GSegment.),
+  [^GScene scn, x, y, name, [upper-label lower-label]]
+  (let [^GSegment upper-segment (GSegment.),
+	^GSegment lower-segment (GSegment.),
 	object (proxy [GObject] []
 		 (draw []
 		   (let [upper-style (if (= 1 (-?> this upper-neighbors count))
@@ -162,14 +161,31 @@
     (doto scn
       (.add object))
 
-    (let [#^GText upper-text (GText. (print-str upper-label) GPosition/NORTH),
-	  #^GText lower-text (GText. (print-str lower-label) GPosition/SOUTH)]
+    (let [^GText upper-text (GText. (print-str upper-label) GPosition/NORTH),
+	  ^GText lower-text (GText. (print-str lower-label) GPosition/SOUTH)]
 	(.setStyle upper-text *default-node-label-style*)
 	(.setStyle lower-text *default-node-label-style*)
 	(.addText upper-segment upper-text)
 	(.addText lower-segment lower-text))
 
     object))
+
+;;
+
+(defvar- *default-highlighted-node-style* (doto (GStyle.)
+                                            (.setForegroundColor Color/RED)
+                                            (.setBackgroundColor Color/WHITE)
+                                            (.setLineWidth 3.0))
+  "Default node style for lattice diagrams for highlighted nodes.")
+
+(defn highlight-node
+  "Toggles the highlight-state of the given node."
+  [node]
+  (if (= (.getStyle node) *default-node-style*)
+    (.setStyle node *default-highlighted-node-style*)
+    (.setStyle node *default-node-style*)))
+
+;;
 
 (defvar- *default-line-style* (doto (GStyle.)
 				(.setLineWidth 2.0)
@@ -178,9 +194,9 @@
 
 (defn- connect-nodes
   "Connects two nodes on scene."
-  ([#^GScene scn, #^GObject x, #^GObject y]
+  ([^GScene scn, ^GObject x, ^GObject y]
     (connect-nodes scn x y (str (get-name x) " -> " (get-name y))))
-  ([#^GScene scn, #^GObject x, #^GObject y, name]
+  ([^GScene scn, ^GObject x, ^GObject y, name]
      (let [line (GSegment.),
 	   c    (proxy [GObject] []
 		  (draw []
@@ -229,7 +245,7 @@
 
 (defn move-node-unchecked-to
   "Moves node to [new-x new-y]."
-  [#^GObject node, new-x, new-y]
+  [^GObject node, new-x, new-y]
   ;; update self position
   (dosync
    (alter (.getUserData node) assoc :position [new-x new-y]))
@@ -238,11 +254,11 @@
   (.redraw node)
 
   ;; update connections to upper neighbors
-  (doseq [#^GObject c (upper-connections node)]
+  (doseq [^GObject c (upper-connections node)]
     (.redraw c))
 
   ;; update connections to lower neighbors
-  (doseq [#^GObject c (lower-connections node)]
+  (doseq [^GObject c (lower-connections node)]
     (.redraw c))
 
   ;; done
@@ -251,8 +267,7 @@
 (defn move-node-by
   "Moves node by [dx dy] making sure it will not be over some of its
   upper neighbors or under some of its lower neighbors."
-  ;; race condition when moving nodes too fast?
-  [#^GObject node, dx, dy]
+  [^GObject node, dx, dy]
   (let [[x y] (position node),
 
 	;; make sure nodes don't go too far
@@ -348,8 +363,7 @@
   [node]
   (all-additively-influenced-nodes node lower-neighbors upper-neighbors))
 
-
-;;;
+;;; Interactions
 
 (defn move-interaction
   "Standard move interaction for lattice diagrams. Installs
@@ -363,7 +377,7 @@
   (add-hook scene :move-stop)
   (let [interaction-obj (atom nil)]
     (proxy [GInteraction] []
-      (event [#^GScene scn, evt, x, y]
+      (event [^GScene scn, evt, x, y]
 	(condp = evt
 	   GWindow/BUTTON1_DOWN  (let [thing (.find scn x y)]
 				   (when (node? thing)
@@ -377,7 +391,11 @@
 				     (.refresh scn))),
 	   GWindow/BUTTON1_UP    (do
 				   (call-hook-with scn :move-stop @interaction-obj)
-				   (reset! interaction-obj nil))
+				   (reset! interaction-obj nil)),
+           GWindow/BUTTON3_DOWN  (let [thing (.find scn x y)]
+                                   (when (node? thing)
+                                     (highlight-node thing)
+                                     (.refresh scn))),
 	   nil)))))
 
 (defn zoom-interaction
@@ -386,13 +404,15 @@
   take no arguments."
   [scene]
   (add-hook scene :zoom-event)
-  (let [#^ZoomInteraction zoom-obj (ZoomInteraction. scene)]
+  (let [^ZoomInteraction zoom-obj (ZoomInteraction. scene)]
     (proxy [GInteraction] []
-      (event [#^GScene scn, evt, x, y]
+      (event [^GScene scn, evt, x, y]
 	(.event zoom-obj scn evt x y)
 	(when scn
 	  (call-hook-with scn :zoom-event)
 	  (call-hook-with scn :image-changed))))))
+
+;;;
 
 (defn add-nodes-with-connections
   "Adds to scene scn nodes placed by node-coordinate-map and connected

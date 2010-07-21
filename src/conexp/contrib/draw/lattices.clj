@@ -9,12 +9,14 @@
 (ns conexp.contrib.draw.lattices
   (:use [conexp.base
          :only (ns-doc,
+                illegal-argument,
                 get-root-cause,
                 with-swing-error-msg,
                 with-printed-result,
                 now,
                 defvar-,
-                defmacro-)]
+                defmacro-,
+                defnk)]
 	[conexp.math.util
          :only (with-doubles)]
 	[conexp.layout
@@ -32,12 +34,14 @@
         ;; drawing
 	[conexp.contrib.draw.scenes
          :only (add-callback-for-hook,
+                call-hook-with,
                 redraw-scene,
                 start-interaction,
                 get-zoom-factors,
                 save-image,
                 get-canvas-from-scene,
-                show-labels)]
+                show-labels,
+                add-scrollbars)]
 	[conexp.contrib.draw.scene-layouts
          :only (draw-on-scene,
                 get-layout-from-scene,
@@ -82,10 +86,8 @@
     (add-action-listener node-radius
 			 (fn [evt]
 			   (let [new-radius (Double/parseDouble (.getText node-radius))]
-			     (do-swing
 			      (do-nodes [n scn]
-					(set-node-radius! n new-radius))
-			      (redraw-scene scn))))))
+				(set-node-radius! n new-radius))))))
   (make-padding buttons)
 
   ;; labels
@@ -362,7 +364,7 @@
 	(.add canvas BorderLayout/CENTER)
 	(.add hscrollbar BorderLayout/SOUTH)
 	(.add vscrollbar BorderLayout/EAST))
-      (.installScrollHandler scn hscrollbar vscrollbar)
+      (add-scrollbars scn hscrollbar vscrollbar)
 
       ;; main panel
       (doto main-panel
@@ -375,11 +377,17 @@
       ;;
       main-panel))
 
+  (defn get-scene-from-panel
+    "If the given panel contains a lattice editor, returns the
+    corresponding scene, nil otherwise."
+    [panel]
+    (get @scenes panel nil))
+
   (defn get-layout-from-panel
-    "If given panel contains a lattice editor, return the
+    "If the given panel contains a lattice editor, return the
     corresponding layout and nil otherwise."
     [panel]
-    (when-let [scn (get @scenes panel nil)]
+    (when-let [scn (get-scene-from-panel panel)]
       (get-layout-from-scene scn)))
 
   nil)
@@ -387,17 +395,27 @@
 
 ;;; Drawing Routine for the REPL
 
-(defn draw-lattice
-  "Draws given lattice with given layout-function on a canvas and returns
-  it. Uses *standard-layout-function* if no layout-function is given."
-  ([lattice]
-     (draw-lattice lattice *standard-layout-function*))
-  ([lattice layout-function]
-     (let [^JFrame frame (JFrame. "conexp-clj Lattice")]
-       (doto frame
-	 (.add ^JPanel (make-lattice-editor frame (layout-function lattice)))
-	 (.setSize (Dimension. 600 600))
-	 (.setVisible true)))))
+(defnk draw-lattice
+  "Draws given lattice with given layout-function on a canvas. Returns
+  the frame and the scene (as map). The following options are allowed,
+  their default values are given in parantheses:
+
+    - layout-fn (*standard-layout-function*)
+    - visible (true)
+    - dimension [600 600]
+  "
+  [lattice
+   :layout-fn *standard-layout-function*
+   :visible true
+   :dimension [600 600]]
+  (let [^JFrame frame (JFrame. "conexp-clj Lattice"),
+        ^JPanel lattice-editor (make-lattice-editor frame (layout-fn lattice))]
+    (doto frame
+      (.add lattice-editor)
+      (.setSize (Dimension. (first dimension) (second dimension)))
+      (.setVisible visible))
+    {:frame frame,
+     :scene (get-scene-from-panel lattice-editor)}))
 
 ;;;
 
