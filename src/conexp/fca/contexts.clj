@@ -126,7 +126,8 @@
   relation is auzomatically restricted to the cartesian product of the
   object an the attribute set."
   {:arglists '([objects attributes incidence])}
-  (fn [& args] (vec (map clojure-type args))))
+  (fn [& args]
+    (vec (map clojure-type args))))
 
 (defmethod make-context [clojure-coll clojure-coll clojure-coll]
   [objects attributes incidence]
@@ -190,7 +191,7 @@
     (make-context-nc (objects ctx) atts inz)))
 
 (defn make-context-from-matrix
-  "Given objects G and attribute M and an incidence matrix contstructs
+  "Given objects G and attribute M and an incidence matrix constructs
   the corresponding context. G and M may also be numbers where they
   represent (range G) and (range M) respectively."
   [G M bits]
