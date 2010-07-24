@@ -9,10 +9,14 @@
 ;; This file has been written by Immanuel Albrecht
 
 (ns conexp.contrib.j3d
-  (:import 
+  (:use conexp.contrib.gui.util
+    conexp.contrib.gui.editors.context-editor.widgets)
+  (:import
+    [conexp.contrib.gui.editors.context-editor.widgets widget]
     [com.sun.j3d.utils.universe SimpleUniverse]
     [com.sun.j3d.utils.geometry ColorCube Sphere]
-    [javax.media.j3d BranchGroup]))
+    [javax.media.j3d BranchGroup Canvas3D]
+    [java.awt GraphicsConfiguration BorderLayout]))
 
 (defn hello-world
   []
@@ -23,3 +27,29 @@
     (.setNominalViewingTransform (.getViewingPlatform universe))
     (.addBranchGraph universe branch)
     universe))
+
+(defwidget j3d-canvas-control [widget] [widget universe contents])
+
+(defn-swing make-j3d-canvas-control
+  "Returns a j3d canvas control"
+  []
+  (let [ config (SimpleUniverse/getPreferredConfiguration)
+         canvas (Canvas3D. config)
+         universe (SimpleUniverse. canvas)
+         contents (BranchGroup.)
+         widget (j3d-canvas-control. canvas universe contents)]
+    (.setNominalViewingTransform (.getViewingPlatform universe))
+    (.setCapability contents BranchGroup/ALLOW_DETACH)
+    (.addBranchGraph universe contents)
+    widget))
+
+
+(defn-swing add-content
+  "Adds some content object to the given j3d-canvas-control."
+  [canvas content]
+  (assert (keyword-isa? canvas j3d-canvas-control))
+  (let [ contents (:contents canvas)
+         universe (:universe canvas)]
+    (.detach contents)
+    (.addChild contents content)
+    (.addBranchGraph universe contents)))
