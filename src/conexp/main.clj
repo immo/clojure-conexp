@@ -27,17 +27,21 @@
 
 ;;;
 
-(def *conexp-version* {:major 0,
-		       :minor 0,
-		       :patch 5,
-		       :qualifier "alpha"})
+(defvar- *internal-version-string*
+  (.trim #=(slurp "VERSION")))
+
+(def *conexp-version* (let [[_ major minor patch qualifier] (re-find #"(\d+).(\d+).(\d+)-(\w+)" *internal-version-string*)]
+                        {:major major,
+                         :minor minor,
+                         :patch patch,
+                         :qualifier qualifier}))
 
 (defn- conexp-built-version
   "Returns the date of the conexp build, retrieved from the name of
   the conexp-clj jar file. Returns \"source\" if there is none in the
   classpath."
   []
-  (if-let [[_ date time] (re-find #"conexp-clj-(\d+).(\d+).jar"
+  (if-let [[_ date time] (re-find #"conexp-clj-.*-(\d+).(\d+).jar"
                                   (System/getProperty "java.class.path"))]
     (str date "." time)
     "source"))
