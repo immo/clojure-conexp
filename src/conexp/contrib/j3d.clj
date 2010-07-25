@@ -15,7 +15,7 @@
     [conexp.contrib.gui.editors.context-editor.widgets widget]
     [com.sun.j3d.utils.universe SimpleUniverse]
     [com.sun.j3d.utils.geometry ColorCube Sphere]
-    [javax.media.j3d BranchGroup Canvas3D]
+    [javax.media.j3d BranchGroup Canvas3D BoundingSphere AmbientLight DirectionalLight Background]
     [java.awt GraphicsConfiguration BorderLayout]))
 
 (defn hello-world
@@ -28,6 +28,40 @@
     (.addBranchGraph universe branch)
     universe))
 
+(defwidget j3d-object [] [object])
+
+(defn get-object
+  "Returns the world object component if the first parameter is
+   a managed object, otherwise returns the first parameter"
+  [o]
+  (if (keyword-isa? o j3d-object)
+    (:object o)
+    o))
+
+(defn-swing make-j3d-sphere
+  "Returns a sphere object"
+  [radius]
+  (j3d-object. (Sphere. radius)))
+
+(defn-swing make-j3d-ambient-light
+  "Returns an ambient light object"
+  []
+  (let [ light (AmbientLight.)
+         bounds (BoundingSphere.)]
+    (.setInfluencingBounds light bounds)
+    (j3d-object. light)))
+
+(defn-swing make-j3d-directional-light
+  "Returns an directional light object"
+  []
+  (let [ light (DirectionalLight.)
+         bounds (BoundingSphere.)]
+    (doto light
+      (.setInfluencingBounds bounds)
+      (.setDirection -3 -4 -8))
+    (j3d-object. light)))
+
+
 (defwidget j3d-canvas-control [widget] [widget universe contents])
 
 (defn-swing make-j3d-canvas-control
@@ -37,7 +71,10 @@
          canvas (Canvas3D. config)
          universe (SimpleUniverse. canvas)
          contents (BranchGroup.)
+         bg (Background. 0.9 0.9 0.9)
          widget (j3d-canvas-control. canvas universe contents)]
+    (.setApplicationBounds bg (BoundingSphere.))
+    (.addChild contents bg)
     (.setNominalViewingTransform (.getViewingPlatform universe))
     (.setCapability contents BranchGroup/ALLOW_DETACH)
     (.addBranchGraph universe contents)
@@ -51,5 +88,14 @@
   (let [ contents (:contents canvas)
          universe (:universe canvas)]
     (.detach contents)
-    (.addChild contents content)
+    (.addChild contents (get-object content))
     (.addBranchGraph universe contents)))
+
+(defn make-standard-universe
+  "Returns a standard universe"
+  []
+  (let [canvas (make-j3d-canvas-control)]
+    (doseq [x [(make-j3d-ambient-light)
+               (make-j3d-directional-light)
+               (make-j3d-sphere 0.2)]] (add-content canvas x))
+    canvas))
